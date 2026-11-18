@@ -11,6 +11,11 @@ import tempfile
 import unicodedata
 from datetime import date, datetime
 
+try:
+    import readline  # noqa: F401  (enables arrow keys and line editing in input())
+except ImportError:
+    pass  # not available (for example on Windows); input() still works
+
 FOLDER = os.path.expanduser("~/.local/share/albumlog")
 DATA = os.path.join(FOLDER, "log.tsv")
 WISHLIST = os.path.join(FOLDER, "wishlist.tsv")
