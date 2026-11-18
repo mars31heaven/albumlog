@@ -1,6 +1,6 @@
 # albumlog
 
-A small offline album log for the terminal, like a personal, private RateYourMusic. It keeps two plain text files: the albums you listened to, and a wishlist of albums you plan to hear. No account, no network and no dependencies besides Python.
+A small offline album log for the terminal, like a personal, private anti-RateYourMusic. It keeps two plain text files: the albums you listened to, and a wishlist of albums you plan to hear. No account, no network and no dependencies besides Python.
 
 ## Features
 
@@ -60,4 +60,8 @@ Both are tab-separated text with a header row. You can edit them by hand, open t
 
 ## Documentation
 
-The full guide is in the [wiki](../../wiki).
+The full guide is in the [wiki](https://github.com/mars31heaven/albumlog/wiki).
+
+## Examples
+
+My own log and wishlist files are available [in this repository](https://github.com/mars31heaven/albumlog.m).
