@@ -23,6 +23,8 @@ FIELDS = ["date", "artist", "album", "year", "listen", "favorite",
           "format", "genre", "country", "note"]
 OLD_FIELDS = ["date", "artist", "album", "year", "listen", "favorite", "note"]
 WISH_FIELDS = ["added", "artist", "album", "priority", "note"]
+# Fields that describe the album itself; they are kept the same on every entry.
+DETAIL_FIELDS = ["year", "favorite", "format", "genre", "country", "note"]
 HEART = "♥"   # favorite in the log
 STAR = "★"    # priority on the wishlist
 DEFAULT_FORMAT = "digital"
@@ -46,8 +48,9 @@ SORTS = {
     "year": lambda r: (int(r["year"]) if r["year"].isdigit() else 0,
                        r["artist"].lower()),
     "fav": lambda r: (r["favorite"] == "yes", r["date"], r["id"]),
+    "times": lambda r: (r["times"], r["date"], r["id"]),
 }
-DESC = {"date", "fav"}
+DESC = {"date", "fav", "times"}
 
 WISH_SORTS = {
     "added": lambda r: (r["added"], r["id"]),
@@ -318,113 +321,191 @@ ALIASES = {
 }
 
 HELP_EPILOG = """\
-storage:
-  ~/.local/share/albumlog/log.tsv        albums you listened to
-  ~/.local/share/albumlog/wishlist.tsv   albums you plan to listen to
-  Plain tab-separated text with a header row. Both open in LibreOffice
-  or Excel (choose Tab as the separator and UTF-8 as the encoding), and
-  you can edit them by hand. To make an XLSX, open a file and save it as
-  XLSX. Back up by copying the albumlog folder.
+quick start:
+  albumlog add          log an album (pick one you logged, or Esc for a new one)
+  albumlog              browse your albums, one row each
+  albumlog -s times     most logged first
+  albumlog stats        totals for the log and the wishlist
+  albumlog wish add     add an album to the wishlist
 
 commands:
-  add               add an entry to the log (asks for each field)
-  list              show log entries in boxed tables (default command)
+  add               log an album, new or already logged
+  list              browse your albums in boxed tables (default command)
+  edit ID           edit an entry (Enter keeps a value, "-" clears optional ones)
+  fav ID            toggle the favorite heart for the whole album
+  rm ID             remove one entry, or all entries of the album
   artists           summary per artist
-  years             summary per release year (or listening year)
+  years             summary per release year (--listened: per listening year)
   tags [genre|country|format]
                     summary per genre, country or format
   stats             totals for the log and the wishlist (also: --stats)
-  fav ID            toggle the favorite heart on an entry
-  edit ID           edit an entry (Enter keeps a value, "-" clears optional ones)
-  rm ID             remove an entry
   wish ...          the wishlist (see below)
 
-symbols:
-  ♥  favorite in the log
-  ★  priority on the wishlist
+how logging works:
+  Log an album every time you listen to it. Each time adds one entry with
+  its own date. Nothing is refused or overwritten.
 
-format:
-  Asked right before genre and country. It defaults to digital (press
-  Enter). Accepted values:
-     digital   d
-     vinyl     v  (or lp)
-     CD        cd
-     cassette  k  (or ca, tape)
-  Entries without a format (for example from an older file) count as
-  digital. Filter with -F, for example: albumlog -F vinyl
+  The list shows each album once. The row is the album's first entry, so
+  the Date column is the first time you logged it, and the Logged column
+  counts its entries. Sort with -s times (most logged first, -r reverses).
+  Use --all (-a) to see every entry with its own date.
 
-countries:
-  Countries are optional. At the prompt, press y to open an fzf menu with
-  all countries, type to search by name or code, press Tab to mark several
-  and Enter to confirm (Esc cancels). Only the ISO 3166-1 alpha-2 code is
-  saved, for example JP or US. Other ways to answer the prompt:
-     jp, brazil     type codes or names directly
-     -              clear the current value
-     Enter          skip, or keep the current value
+  A new album asks, in this order: artist, album, listen (f/l), year,
+  favorite, format, genres, countries, note, date (default: today).
 
-  Without fzf installed, you are asked to type codes or names instead.
-  Filters accept a code or a name: albumlog -c jp  or  albumlog -c japan
-  Note: England, Scotland and Wales have no code of their own and are
-  saved as GB.
+repeat listen (an album you already logged):
+  albumlog add opens fzf with every logged album, for example
+     Dinosaur Jr. - Dinosaur  (3x, last 2026-11-19)
+  Type to search. Enter picks the album, Esc logs a new album instead.
+  Without fzf, or with an empty log, you type artist and album; a match
+  (capitals ignored) is treated as a repeat listen.
+
+  Then the script:
+   1. shows the saved details, the count, and the first and last dates;
+   2. asks about favorite, format, genres and countries, one by one:
+        Format: vinyl. Change it? [y/N]
+      Enter or n keeps the saved value and skips the field; y opens the
+      normal prompt with the saved value as default. Artist, album and
+      year are not asked: correct them in the .tsv file, or with:
+      albumlog edit ID
+   3. shows the note and asks "Add a new note? [y/N]". A new note is added
+      after the old one, separated by " | ". The old note is never erased;
+   4. uses today's date automatically and says which time this is, for
+      example: logging it for the 3rd time on 2026-11-25.
+  Changed details are saved on every entry of the album, so the list never
+  disagrees with itself. A note belongs to the album, not to one entry.
+  wish done ID follows the same flow, without the fzf step.
+
+fields:
+  listen      f (first time you heard it) or l (heard before you logged).
+              Asked for new albums only; repeat entries are saved as last.
+              The list shows the listen type of the album's first entry.
+  year        release year, 1000 to next year
+  favorite    y or n (default n); shown as ♥
+  format      digital (default), vinyl, CD, cassette:
+                 digital d     vinyl v, lp     CD cd     cassette k, ca, tape
+              c alone is refused because it could mean CD or cassette.
+              A missing format counts as digital.
+  genres      comma-separated, saved in lowercase without duplicates:
+              indie rock, noise pop. Spelling matters: post-rock and
+              post rock are different tags.
+  countries   optional. At the prompt: y opens an fzf menu (type to search
+              by name or code, Tab marks several, Enter confirms, Esc
+              cancels); or type codes or names: jp, brazil; - clears; Enter
+              skips or keeps. Only ISO 3166-1 alpha-2 codes are saved (JP,
+              US). Tables show the name too (JP Japan). Aliases: uk, usa,
+              czech republic, turkey, ivory coast. England, Scotland, Wales
+              and Northern Ireland are saved as GB. Without fzf you type.
+  note        free text, shared by all entries of an album
+  date        YYYY-MM-DD, no time of day. To backdate an entry, use edit.
+  symbols     ♥ favorite in the log      ★ priority on the wishlist
+
+prompts:
+  Arrow keys, Home/End and Up/Down history work at every prompt (needs the
+  readline module, included with Python on Linux and macOS).
+
+list:
+  Options: -s date|times|artist|album|year|fav   -r reverse   -a, --all
+           -f favorites   -l first|last   -F FORMAT   -t GENRE (whole tag)
+           -c COUNTRY (code or name)   -g TEXT (search)   -n N   --no-page
+  date, times and fav start with the newest or highest first; the others
+  start A to Z or oldest first. -r flips any of them. -l filters by the
+  listen type of the row shown. Filters can be combined.
+
+  Navigation keys in a terminal (piped output prints one full table):
+     n / Enter  next page        p  previous page
+     d  sort by date             f  favorites first
+     a  sort by artist           b  sort by album
+     y  sort by year             t  most logged first
+     r  reverse the current order
+     q  quit
+
+edit, fav, rm:
+  The # in the normal list is the number of the album's first entry. Use
+  --all to see the number of every entry.
+  edit ID  asks every field, including artist, album and year, with the
+           current values as defaults. The date and listen type change
+           only that entry; everything else, including the names, is
+           applied to every entry of the album. edit can replace the note.
+  fav ID   switches the heart for every entry of the album.
+  rm ID    one entry: confirm with y. Several entries: o removes only that
+           one, a removes all of them, c cancels.
+
+summaries and stats:
+  artists  -s name|albums|fav|recent       years  -s year|albums|fav
+  tags     -s name|albums|fav              all accept -r
+  Albums are distinct albums. Listens are entries. ♥ counts distinct
+  favorite albums.
+  stats shows two boxes. Log: listens logged, distinct albums, artists,
+  favorite albums, first and last listens, albums per format, the most
+  logged album, earliest and latest dates, top genre and top country.
+  Wishlist: albums waiting, priority albums, the oldest one waiting, and
+  how many are already in your log.
 
 wishlist:
   wish add          add an album (artist, album, priority, optional note)
   wish list         show the wishlist (default wish command)
   wish edit ID      edit a wishlist entry
-  wish star ID      toggle the priority star on an entry
+  wish star ID      toggle the priority star
   wish rm ID        remove a wishlist entry
-  wish done ID      you listened to it: opens the normal "add" questions
-                    with artist, album and note prefilled, saves it in the
-                    log, and removes it from the wishlist
-  wish pick         pick a random album from the wishlist
+  wish done ID      you listened to it: log it and remove it from the list
+  wish pick         pick a random album
+  List options: -s added|priority|artist|album (default: added, oldest
+  first)   -p priority only   -r reverse   -g TEXT search
+  Pick option:  -p  pick only among priority albums
+  The date added is saved automatically. Adding an album that is already on
+  the wishlist is refused. If it is already in your log, you are warned and
+  asked to confirm. wish done saves the log first and then removes the
+  wishlist entry, so an interruption cannot lose it.
 
-  The date each album was added is saved automatically. List options:
-     -s added|priority|artist|album   sort order (default: added)
-     -p                               priority albums only
-     -r                               reverse the order
-     -g TEXT                          search artist, album and note
-  Pick option:
-     -p                               pick only among priority albums
+storage:
+  ~/.local/share/albumlog/log.tsv        every time you logged an album
+  ~/.local/share/albumlog/wishlist.tsv   albums you plan to listen to
+  UTF-8, tab-separated, with a header row; one row of log.tsv is one entry.
+  log.tsv columns:
+     date artist album year listen favorite format genre country note
+  wishlist.tsv columns:
+     added artist album priority note
+  Editing by hand: keep the header and one tab between values; yes/no for
+  favorite and priority; first/last for listen; one of digital, vinyl, CD,
+  cassette for format (lp, cd and similar spellings are corrected on load);
+  uppercase country codes (JP, US); one entry per line. Entries of the same
+  album are grouped by artist and album, ignoring capitals, so when you
+  correct a name, change it on every row of that album.
+  Writes go through a temporary file, so a crash cannot corrupt the data.
+  Back up by copying the albumlog folder. To use a spreadsheet, open a
+  file in LibreOffice or Excel with Tab as separator and UTF-8 encoding.
 
-  Adding an album that is already on the wishlist is refused. If it is
-  already in your log, you are warned and asked to confirm.
-
-stats:
-  albumlog stats shows two boxes. Log: entries, distinct albums, artists,
-  favorite albums, first and last listens, albums per format, earliest
-  and latest dates, top genre and top country. Wishlist: albums waiting,
-  priority albums, the oldest one waiting, and how many are already in
-  your log.
-
-tags:
-  Genres accept several values separated by commas, for example:
-  indie rock, noise pop
-  If an album is already in the log, the next entry for it is saved as a
-  "last" listen without asking, and year, format, genre and country are
-  prefilled from the earlier entry.
-
-list navigation:
-  n / Enter  next page        p  previous page
-  d  sort by date             f  favorites first
-  a  sort by artist           b  sort by album
-  y  sort by year             r  reverse the current order
-  q  quit
+good to know:
+  - IDs are row positions, not saved values. They can change after a
+    removal; check the # column before using fav, edit, rm or wish star.
+  - A repeat is recognized by exact artist and album name (capitals
+    ignored), so a typo creates a separate album. Fix it in log.tsv.
+  - Renaming an album to match another logged album merges the two.
+  - No time of day, no rating, and no locking (single user).
+  - ISO 3166-1 has no entries for England, Scotland, Wales or Kosovo.
 
 examples:
-  albumlog add                     add a new entry
-  albumlog                         browse everything, newest first
+  albumlog add                     log an album: pick a logged one or Esc for new
+  albumlog                         browse albums, newest first
+  albumlog -s times                most logged albums first
+  albumlog -s times -r             least logged albums first
+  albumlog --all                   every single entry, with its own date
   albumlog -f                      favorites only
-  albumlog -F vinyl                only entries heard on vinyl
-  albumlog -t "indie rock"         only entries with that genre
+  albumlog -F vinyl                only albums heard on vinyl
+  albumlog -t "indie rock"         only albums with that genre
   albumlog -c japan -s year        only that country, sorted by year
   albumlog -g dinosaur             search artist, album, year, tags, note
-  albumlog -l first                only first listens
+  albumlog -l first                only albums whose first entry is a first listen
+  albumlog -f -F vinyl -c jp       filters can be combined
   albumlog artists -s albums       artists with the most albums first
   albumlog years --listened        albums logged per listening year
   albumlog tags format             albums per format
   albumlog tags country            albums per country
   albumlog stats                   totals for the log and the wishlist
-  albumlog fav 12                  toggle the heart on entry 12
+  albumlog fav 12                  toggle the heart on album 12
+  albumlog edit 12                 edit entry 12
+  albumlog rm 12                   remove entry 12, or all entries of its album
   albumlog wish add                add an album to the wishlist
   albumlog wish -p                 priority albums on the wishlist
   albumlog wish star 3             toggle priority on wishlist entry 3
@@ -491,13 +572,13 @@ def table(rows, header, right=(), measure=None):
 
 def cells(r):
     return (str(r["id"]), r["date"], r["artist"], r["album"], r["year"],
-            r["listen"], HEART if r["favorite"] == "yes" else "",
+            str(r["times"]), r["listen"], HEART if r["favorite"] == "yes" else "",
             r["format"], r["genre"], r["country"], r["note"])
 
 
-HEADER = ("#", "Date", "Artist", "Album", "Year", "Listen", HEART,
+HEADER = ("#", "Date", "Artist", "Album", "Year", "Logged", "Listen", HEART,
           "Format", "Genre", "Country", "Note")
-RIGHT = (0, 4)
+RIGHT = (0, 4, 5)
 
 WISH_HEADER = ("#", "Added", "Artist", "Album", STAR, "Note")
 WISH_RIGHT = (0,)
@@ -701,6 +782,80 @@ def find(rows, entry_id):
     sys.exit(f"no entry with id {entry_id}")
 
 
+# ---------- albums and entries ----------
+
+def album_key(r):
+    return (r["artist"].casefold(), r["album"].casefold())
+
+
+def album_entries(rows, key):
+    """All entries (listens) of one album."""
+    return [x for x in rows if album_key(x) == key]
+
+
+def first_of(group):
+    """The first entry of an album: the earliest date, then the earliest row."""
+    return min(group, key=lambda x: (x["date"], x["id"]))
+
+
+def with_counts(rows):
+    """Add r["times"], the number of entries of the same album, to every row."""
+    counts = {}
+    for r in rows:
+        counts[album_key(r)] = counts.get(album_key(r), 0) + 1
+    for r in rows:
+        r["times"] = counts[album_key(r)]
+    return rows
+
+
+def representatives(rows):
+    """One row per album: its first entry."""
+    best = {}
+    for r in rows:
+        k = album_key(r)
+        if k not in best or (r["date"], r["id"]) < (best[k]["date"], best[k]["id"]):
+            best[k] = r
+    return list(best.values())
+
+
+def ordinal(n):
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def pick_logged(rows):
+    """Browse the logged albums with fzf. Returns its entries, or None."""
+    if not rows:
+        return None
+    if not shutil.which("fzf"):
+        print("fzf not found; type artist and album instead")
+        return None
+    groups = {}
+    for r in rows:
+        groups.setdefault(album_key(r), []).append(r)
+    items = sorted(groups.values(),
+                   key=lambda g: (first_of(g)["artist"].casefold(),
+                                  first_of(g)["album"].casefold()))
+    lines = "\n".join(
+        f"{i}\t{first_of(g)['artist']} - {first_of(g)['album']}  "
+        f"({len(g)}x, last {max(x['date'] for x in g)})"
+        for i, g in enumerate(items))
+    try:
+        res = subprocess.run(
+            ["fzf", "--delimiter", "\t", "--with-nth", "2..",
+             "--height", "40%", "--reverse", "--prompt", "Album> ",
+             "--header", "Enter: album already logged | Esc: new album"],
+            input=lines, stdout=subprocess.PIPE, text=True)
+    except OSError:
+        return None
+    if res.returncode != 0 or not res.stdout.strip():
+        return None
+    return items[int(res.stdout.split("\t", 1)[0])]
+
+
 # ---------- input ----------
 
 def ask(label, default="", check=None):
@@ -711,6 +866,20 @@ def ask(label, default="", check=None):
         if not err:
             return val
         print(err)
+
+
+def confirm(question, default):
+    """Yes/no question; Enter gives the default."""
+    hint = "[Y/n]" if default else "[y/N]"
+    while True:
+        ans = input(f"{question} {hint} ").strip().lower()
+        if not ans:
+            return default
+        if ans in ("y", "yes"):
+            return True
+        if ans in ("n", "no"):
+            return False
+        print("type y or n")
 
 
 def optional(label, default=""):
@@ -748,50 +917,86 @@ def check_format(val):
     return "type digital (d), vinyl (v), CD (cd) or cassette (k)"
 
 
-def album_key(r):
-    return (r["artist"].casefold(), r["album"].casefold())
+def ask_listen(default=""):
+    val = ask("Listen: [f]irst or [l]ast", default[:1],
+              lambda v: None if v.lower() in ("f", "l", "first", "last")
+              else "type f or l")
+    return "first" if val.lower().startswith("f") else "last"
 
 
-def prompt_entry(cur, rows):
-    r = dict(cur)
-    r["artist"] = ask("Artist", cur["artist"], need)
-    r["album"] = ask("Album", cur["album"], need)
+def ask_favorite(current):
+    fav = ask("Favorite? [y/n]", "y" if current == "yes" else "n", yes_no)
+    return "yes" if fav.lower() == "y" else "no"
 
-    others = [x for x in rows
-              if x["id"] != cur["id"] and album_key(x) == album_key(r)]
-    base = (others[0] if others else
-            {"year": "", "format": DEFAULT_FORMAT, "genre": "", "country": ""})
-    if others:
-        print(f"already logged {len(others)} time(s); "
-              "year, format and tags are prefilled")
 
-    r["year"] = ask("Year", cur["year"] or base["year"], check_year)
-
-    if others:
-        r["listen"] = cur["listen"] or "last"
-        if not cur["listen"]:
-            print("saved as a last listen")
-    else:
-        listen = ask("Listen: [f]irst or [l]ast", cur["listen"][:1],
-                     lambda v: None if v.lower() in ("f", "l", "first", "last")
-                     else "type f or l")
-        r["listen"] = "first" if listen.lower().startswith("f") else "last"
-
-    fav = ask("Favorite? [y/n]", "y" if cur["favorite"] == "yes" else "n",
-              yes_no)
-    r["favorite"] = "yes" if fav.lower() == "y" else "no"
-
+def ask_format(current):
     fmt = ask("Format: [d]igital, [v]inyl, [cd], [k] cassette",
-              cur["format"] or base["format"] or DEFAULT_FORMAT, check_format)
-    r["format"] = normalize_format(fmt)
+              current or DEFAULT_FORMAT, check_format)
+    return normalize_format(fmt)
 
-    r["genre"] = parse_tags(
-        optional("Genres, comma-separated (optional)",
-                 cur["genre"] or base["genre"]), lower=True)
-    r["country"] = prompt_countries(cur["country"] or base["country"])
-    r["note"] = optional("Note (optional)", cur["note"])
-    r["date"] = ask("Date YYYY-MM-DD", cur["date"], check_date)
-    return r
+
+def ask_genres(current):
+    return parse_tags(
+        optional("Genres, comma-separated (optional)", current), lower=True)
+
+
+def prompt_details(cur):
+    """Ask every album-level field, using the values in `cur` as defaults."""
+    return {
+        "year": ask("Year", cur["year"], check_year),
+        "favorite": ask_favorite(cur["favorite"]),
+        "format": ask_format(cur["format"]),
+        "genre": ask_genres(cur["genre"]),
+        "country": prompt_countries(cur["country"]),
+        "note": optional("Note (optional)", cur["note"]),
+    }
+
+
+def revise_details(cur):
+    """Repeat listen: offer to change each saved field; never replace the note.
+
+    Artist, album and year are not asked; they are corrected in the .tsv file.
+    """
+    d = {k: cur[k] for k in DETAIL_FIELDS}
+
+    def change(label, shown):
+        return confirm(f"{label}: {shown or '-'}. Change it?", False)
+
+    if change("Favorite", cur["favorite"]):
+        d["favorite"] = ask_favorite(cur["favorite"])
+    if change("Format", cur["format"]):
+        d["format"] = ask_format(cur["format"])
+    if change("Genres", cur["genre"]):
+        d["genre"] = ask_genres(cur["genre"])
+    if change("Countries", country_names(cur["country"])):
+        d["country"] = prompt_countries(cur["country"])
+
+    print(f"Note: {cur['note'] or '-'}")
+    if confirm("Add a new note?", False):
+        new = clean(input("New note: "))
+        if new:
+            d["note"] = f"{cur['note']} | {new}" if cur["note"] else new
+    return d
+
+
+def show_logged(group):
+    """Tell the user an album is already logged and print its details."""
+    base = first_of(group)
+    dates = sorted(x["date"] for x in group)
+    n = len(group)
+    print(f"{base['artist']} - {base['album']}: already logged {n} "
+          f"time{'s' if n != 1 else ''} (first {dates[0]}, last {dates[-1]}). "
+          "Saved details:")
+    shown = (
+        ("Year", base["year"]),
+        ("Favorite", base["favorite"]),
+        ("Format", base["format"]),
+        ("Genres", base["genre"]),
+        ("Countries", country_names(base["country"])),
+        ("Note", base["note"]),
+    )
+    for label, value in shown:
+        print(f"  {label + ':':<11}{value or '-'}")
 
 
 def blank_entry(artist="", album="", note=""):
@@ -800,42 +1005,107 @@ def blank_entry(artist="", album="", note=""):
             "format": "", "genre": "", "country": "", "note": note}
 
 
+def log_listen(rows, artist="", album="", note=""):
+    """Log one listen and append it to `rows`.
+
+    With no artist and album given (albumlog add), fzf offers the albums
+    already logged. A repeat listen shows the saved details, offers to change
+    each one, keeps the old note, and uses today's date. Changed details are
+    copied to every entry of that album.
+    """
+    group = None
+    if not artist and not album:
+        group = pick_logged(rows)
+    if group is None:
+        artist = ask("Artist", artist, need)
+        album = ask("Album", album, need)
+        group = album_entries(rows, (artist.casefold(), album.casefold()))
+
+    entry = blank_entry(artist, album, note)
+    if group:
+        base = first_of(group)
+        entry["artist"], entry["album"] = base["artist"], base["album"]
+        show_logged(group)
+        entry.update(revise_details(base))
+        entry["listen"] = "last"
+        print(f"logging it for the {ordinal(len(group) + 1)} time "
+              f"on {entry['date']}")
+    else:
+        entry["listen"] = ask_listen()
+        entry.update(prompt_details(entry))
+        entry["date"] = ask("Date YYYY-MM-DD", entry["date"], check_date)
+
+    entry["id"] = len(rows) + 1
+    for x in group:
+        x.update({k: entry[k] for k in DETAIL_FIELDS})
+    rows.append(entry)
+    return entry
+
+
 # ---------- entry commands ----------
 
 def cmd_add(args):
     rows = load()
-    entry = prompt_entry(blank_entry(), rows)
-    entry["id"] = len(rows) + 1
-    rows.append(entry)
+    entry = log_listen(rows)
     save(rows)
-    print(f"added #{entry['id']}: {entry['artist']} - {entry['album']}")
+    n = len(album_entries(rows, album_key(entry)))
+    extra = f" ({ordinal(n)} time)" if n > 1 else ""
+    print(f"added #{entry['id']}: {entry['artist']} - {entry['album']}{extra}")
 
 
 def cmd_edit(args):
     rows = load()
     r = find(rows, args.id)
-    r.update(prompt_entry(r, rows))
+    group = album_entries(rows, album_key(r))
+
+    new = {}
+    new["artist"] = ask("Artist", r["artist"], need)
+    new["album"] = ask("Album", r["album"], need)
+    listen = ask_listen(r["listen"])
+    new.update(prompt_details(r))
+    when = ask("Date of this entry YYYY-MM-DD", r["date"], check_date)
+
+    for x in group:          # album-level changes apply to every entry
+        x.update(new)
+    r["listen"], r["date"] = listen, when
     save(rows)
-    print(f"updated #{r['id']}")
+    extra = f" (details applied to all {len(group)} entries)" if len(group) > 1 else ""
+    print(f"updated #{r['id']}{extra}")
 
 
 def cmd_fav(args):
     rows = load()
     r = find(rows, args.id)
-    r["favorite"] = "no" if r["favorite"] == "yes" else "yes"
+    value = "no" if r["favorite"] == "yes" else "yes"
+    for x in album_entries(rows, album_key(r)):
+        x["favorite"] = value
     save(rows)
-    state = "marked as favorite" if r["favorite"] == "yes" else "unmarked"
+    state = "marked as favorite" if value == "yes" else "unmarked"
     print(f"#{r['id']} {r['artist']} - {r['album']} {state}")
 
 
 def cmd_rm(args):
     rows = load()
     r = find(rows, args.id)
-    if input(f"Remove #{r['id']} {r['artist']} - {r['album']}? [y/N] ").lower() != "y":
+    group = album_entries(rows, album_key(r))
+    targets = [r]
+    if len(group) > 1:
+        ans = ask(f"{r['artist']} - {r['album']} has {len(group)} entries. "
+                  f"Remove only #{r['id']} (o), all {len(group)} (a), "
+                  "or cancel (c)", "c",
+                  lambda v: None if v.lower() in ("o", "a", "c")
+                  else "type o, a or c").lower()
+        if ans == "c":
+            sys.exit("cancelled")
+        if ans == "a":
+            targets = group
+    elif input(f"Remove #{r['id']} {r['artist']} - {r['album']}? [y/N] "
+               ).lower() != "y":
         sys.exit("cancelled")
-    rows.remove(r)
-    save(rows)
-    print("removed (ids after this one have shifted down by one)")
+    gone = {id(x) for x in targets}
+    save([x for x in rows if id(x) not in gone])
+    print(f"removed {len(targets)} entr{'y' if len(targets) == 1 else 'ies'} "
+          "(ids after the removed ones have shifted down)")
 
 
 # ---------- wishlist commands ----------
@@ -901,9 +1171,7 @@ def cmd_wish_done(args):
     wishes = wload()
     w = find(wishes, args.id)
     rows = load()
-    entry = prompt_entry(blank_entry(w["artist"], w["album"], w["note"]), rows)
-    entry["id"] = len(rows) + 1
-    rows.append(entry)
+    entry = log_listen(rows, w["artist"], w["album"], w["note"])
     save(rows)              # the log is saved first, so nothing can be lost
     wishes.remove(w)
     wsave(wishes)
@@ -942,7 +1210,9 @@ def ordered(rows, key, reverse):
 
 
 def cmd_list(args):
-    rows = load()
+    rows = with_counts(load())
+    if not args.all:
+        rows = representatives(rows)   # one row per album: its first entry
     if args.favorites:
         rows = [r for r in rows if r["favorite"] == "yes"]
     if args.listen:
@@ -966,10 +1236,12 @@ def cmd_list(args):
     if not rows:
         sys.exit("no entries (add one with: albumlog add)")
 
+    unit = "entries" if args.all else "albums"
     interactive = sys.stdin.isatty() and sys.stdout.isatty() and not args.no_page
     key, reverse, page = args.sort, args.reverse, 0
     size = args.limit or max(5, shutil.get_terminal_size((80, 24)).lines - 9)
-    keys = {"d": "date", "f": "fav", "a": "artist", "b": "album", "y": "year"}
+    keys = {"d": "date", "f": "fav", "a": "artist", "b": "album",
+            "y": "year", "t": "times"}
 
     while True:
         rows_sorted = ordered(rows, key, reverse)
@@ -981,12 +1253,12 @@ def cmd_list(args):
         page = min(page, pages - 1)
         chunk = measure[page * size:(page + 1) * size]
         direction = "descending" if (key in DESC) != reverse else "ascending"
-        print(f"\n{len(rows_sorted)} entries · sorted by {key} ({direction}) · "
+        print(f"\n{len(rows_sorted)} {unit} · sorted by {key} ({direction}) · "
               f"page {page + 1}/{pages}")
         table(chunk, HEADER, RIGHT, measure=measure)
         try:
             cmd = input("[n]ext [p]rev [d]ate [f]av [a]rtist [b]album [y]ear "
-                        "[r]everse [q]uit > ").strip().lower()
+                        "[t]imes [r]everse [q]uit > ").strip().lower()
         except EOFError:
             return
         if cmd in ("q", "quit"):
@@ -1100,6 +1372,18 @@ def format_counts(rows):
     return ", ".join(parts) or "-"
 
 
+def most_logged(rows):
+    counts, names = {}, {}
+    for r in rows:
+        k = album_key(r)
+        counts[k] = counts.get(k, 0) + 1
+        names.setdefault(k, f"{r['artist']} - {r['album']}")
+    if not counts:
+        return "-"
+    k = max(counts, key=lambda x: (counts[x], x))
+    return f"{names[k]} ({counts[k]})"
+
+
 def cmd_stats(args):
     rows, wishes = load(), wload()
     albums = {album_key(r) for r in rows}
@@ -1108,13 +1392,14 @@ def cmd_stats(args):
     dates = [r["date"] for r in rows]
 
     table([
-        ("Entries", str(len(rows))),
+        ("Listens logged", str(len(rows))),
         ("Distinct albums", str(len(albums))),
         ("Artists", str(len(artists))),
         (f"Favorite albums {HEART}", str(len(favs))),
         ("First listens", str(sum(r["listen"] == "first" for r in rows))),
         ("Last listens", str(sum(r["listen"] == "last" for r in rows))),
         ("Albums per format", format_counts(rows)),
+        ("Most logged album", most_logged(rows)),
         ("Earliest entry", min(dates) if dates else "-"),
         ("Latest entry", max(dates) if dates else "-"),
         ("Top genre", top_tag(rows, "genre")),
@@ -1142,13 +1427,17 @@ def main():
     )
     sub = p.add_subparsers(dest="cmd", metavar="command")
 
-    sub.add_parser("add", help="add an entry").set_defaults(func=cmd_add)
+    sub.add_parser("add", help="log an album (new or already logged)"
+                   ).set_defaults(func=cmd_add)
 
-    ls = sub.add_parser("list", help="browse entries (default)")
+    ls = sub.add_parser("list", help="browse albums (default)")
     ls.add_argument("-s", "--sort", choices=sorted(SORTS), default="date",
-                    help="sort order (default: date, newest first)")
+                    help="sort order (default: date, newest first; "
+                         "times = most logged first)")
     ls.add_argument("-r", "--reverse", action="store_true",
                     help="reverse the sort order")
+    ls.add_argument("-a", "--all", action="store_true",
+                    help="show every entry instead of one row per album")
     ls.add_argument("-f", "--favorites", action="store_true",
                     help="favorites only")
     ls.add_argument("-l", "--listen", choices=["first", "last"],
