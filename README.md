@@ -79,3 +79,7 @@ Both are tab-separated UTF-8 text with a header row, and one row of `log.tsv` is
 
 - `albumlog -h` is the quick reference in your terminal.
 - The [wiki](../../wiki) is the full guide, with every field, the file format and troubleshooting.
+
+## Examples
+
+My own log and wishlist files are available [in this repository](https://github.com/mars31heaven/albumlog.m).
