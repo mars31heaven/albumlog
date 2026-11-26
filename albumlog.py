@@ -350,8 +350,9 @@ how logging works:
   counts its entries. Sort with -s times (most logged first, -r reverses).
   Use --all (-a) to see every entry with its own date.
 
-  A new album asks, in this order: artist, album, listen (f/l), year,
-  favorite, format, genres, countries, note, date (default: today).
+  A new album asks, in this order: artist, album (the only required
+  fields), listen (f/l), year (optional), favorite, format, genres,
+  countries, note, date (default: today).
 
 repeat listen (an album you already logged):
   albumlog add opens fzf with every logged album, for example
@@ -377,10 +378,13 @@ repeat listen (an album you already logged):
   wish done ID follows the same flow, without the fzf step.
 
 fields:
+  artist      required
+  album       required
   listen      f (first time you heard it) or l (heard before you logged).
               Asked for new albums only; repeat entries are saved as last.
               The list shows the listen type of the album's first entry.
-  year        release year, 1000 to next year
+  year        optional release year, 1000 to next year; Enter keeps the
+              current value, - clears it
   favorite    y or n (default n); shown as ♥
   format      digital (default), vinyl, CD, cassette:
                  digital d     vinyl v, lp     CD cd     cassette k, ca, tape
@@ -389,13 +393,14 @@ fields:
   genres      comma-separated, saved in lowercase without duplicates:
               indie rock, noise pop. Spelling matters: post-rock and
               post rock are different tags.
-  countries   optional. At the prompt: y opens an fzf menu (type to search
-              by name or code, Tab marks several, Enter confirms, Esc
-              cancels); or type codes or names: jp, brazil; - clears; Enter
-              skips or keeps. Only ISO 3166-1 alpha-2 codes are saved (JP,
-              US). Tables show the name too (JP Japan). Aliases: uk, usa,
-              czech republic, turkey, ivory coast. England, Scotland, Wales
-              and Northern Ireland are saved as GB. Without fzf you type.
+  countries   optional. At the prompt: Enter opens an fzf menu (type to
+              search by name or code, Tab marks several, Enter confirms,
+              Esc cancels); or type codes or names: jp, brazil; s skips
+              (or keeps the saved value); - clears. Only ISO 3166-1
+              alpha-2 codes are saved (JP, US). Tables show the name too
+              (JP Japan). Aliases: uk, usa, czech republic, turkey, ivory
+              coast. England, Scotland, Wales and Northern Ireland are
+              saved as GB. Without fzf you type.
   note        free text, shared by all entries of an album
   date        YYYY-MM-DD, no time of day. To backdate an entry, use edit.
   symbols     ♥ favorite in the log      ★ priority on the wishlist
@@ -435,7 +440,7 @@ summaries and stats:
   artists  -s name|albums|fav|recent       years  -s year|albums|fav
   tags     -s name|albums|fav              all accept -r
   Albums are distinct albums. Listens are entries. ♥ counts distinct
-  favorite albums.
+  favorite albums. Albums without a year are grouped under "?" in years.
   stats shows two boxes. Log: listens logged, distinct albums, artists,
   favorite albums, first and last listens, albums per format, the most
   logged album, earliest and latest dates, top genre and top country.
@@ -469,9 +474,10 @@ storage:
   Editing by hand: keep the header and one tab between values; yes/no for
   favorite and priority; first/last for listen; one of digital, vinyl, CD,
   cassette for format (lp, cd and similar spellings are corrected on load);
-  uppercase country codes (JP, US); one entry per line. Entries of the same
-  album are grouped by artist and album, ignoring capitals, so when you
-  correct a name, change it on every row of that album.
+  uppercase country codes (JP, US); an empty year is allowed; one entry per
+  line. Entries of the same album are grouped by artist and album, ignoring
+  capitals, so when you correct a name, change it on every row of that
+  album.
   Writes go through a temporary file, so a crash cannot corrupt the data.
   Back up by copying the albumlog folder. To use a spreadsheet, open a
   file in LibreOffice or Excel with Tab as separator and UTF-8 encoding.
@@ -691,16 +697,17 @@ def pick_countries():
 
 
 def prompt_countries(current):
+    """Enter opens the chooser, s skips (keeps the saved value), - clears."""
     shown = f" [{current}]" if current else ""
-    hint = "y = choose, - = clear, Enter = keep" if current \
-        else "y = choose, Enter = skip"
+    hint = "Enter = choose, s = keep, - = clear" if current \
+        else "Enter = choose, s = skip"
     while True:
         ans = clean(input(f"Countries{shown} ({hint}): "))
-        if not ans:
+        if ans.lower() == "s":
             return current
         if ans == "-":
             return ""
-        if ans.lower() in ("y", "yes"):
+        if not ans:
             codes = pick_countries()
             if codes is None:
                 return current
@@ -903,6 +910,18 @@ def check_year(val):
     return f"enter a year between 1000 and {limit}"
 
 
+def check_year_optional(val):
+    if val in ("", "-"):
+        return None
+    return check_year(val)
+
+
+def ask_year(current):
+    """Optional year: Enter keeps the current value, "-" clears it."""
+    val = ask("Year (optional)", current, check_year_optional)
+    return "" if val == "-" else val
+
+
 def check_date(val):
     try:
         datetime.strptime(val, "%Y-%m-%d")
@@ -943,7 +962,7 @@ def ask_genres(current):
 def prompt_details(cur):
     """Ask every album-level field, using the values in `cur` as defaults."""
     return {
-        "year": ask("Year", cur["year"], check_year),
+        "year": ask_year(cur["year"]),
         "favorite": ask_favorite(cur["favorite"]),
         "format": ask_format(cur["format"]),
         "genre": ask_genres(cur["genre"]),
